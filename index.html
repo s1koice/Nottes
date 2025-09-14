@@ -8,10 +8,11 @@
 </head>
 <body>
   <div class="app">
+    <!-- =========== SIDEBAR: ПАПКИ =========== -->
     <aside class="sidebar" aria-label="Папки">
       <div class="sidebar-header">
         <div class="brand">Заметки</div>
-        <button id="newFolder" title="Новая папка">＋ Папка</button>
+        <button id="newFolder" class="btn" title="Новая папка">＋ Папка</button>
       </div>
       <nav id="foldersTree" class="folders"></nav>
       <div class="divider"></div>
@@ -20,13 +21,26 @@
       </div>
     </aside>
 
+    <!-- =========== MIDDLE: СПИСОК ЗАМЕТОК =========== -->
     <section class="list-pane" aria-label="Список заметок">
       <div class="list-header">
-        <button id="newNote" class="primary">Новая заметка</button>
+        <div class="list-actions">
+          <button id="noteUp" class="btn-ghost" title="Поднять заметку">▲</button>
+          <button id="noteDown" class="btn-ghost" title="Опустить заметку">▼</button>
+        </div>
+        <div class="spacer"></div>
+        <!-- Кнопка как в Apple Notes: квадрат с карандашом справа -->
+        <button id="newNote" class="btn-icon" title="Новая заметка" aria-label="Новая заметка">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M3 5a2 2 0 0 1 2-2h9a1 1 0 1 1 0 2H5v14h14v-9a1 1 0 1 1 2 0v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z" fill="currentColor"/>
+            <path d="M20.7 3.3a1 1 0 0 0-1.4 0l-7.9 7.9-.9 3.2 3.2-.9 7.9-7.9a1 1 0 0 0 0-1.4l-1-1z" fill="currentColor"/>
+          </svg>
+        </button>
       </div>
       <div id="list" class="note-list" role="list"></div>
     </section>
 
+    <!-- =========== RIGHT: РЕДАКТОР =========== -->
     <main class="content" aria-label="Заметка">
       <div class="toolbar">
         <select id="moveFolder" title="Переместить в папку"></select>
@@ -40,7 +54,7 @@
         <button id="del" class="danger" title="Удалить">Удалить</button>
       </div>
 
-      <!-- заголовок теперь вычисляется автоматически из первой строки редактора -->
+      <!-- заголовок вычисляется из первой строки редактора -->
       <div id="meta" class="meta"></div>
       <div id="editor" class="editor" contenteditable spellcheck="true" dir="ltr" enterkeyhint="done"></div>
 
@@ -50,6 +64,19 @@
       </div>
     </main>
   </div>
+
+  <!-- =========== МОДАЛЬНОЕ ОКНО: НОВАЯ ПАПКА =========== -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div id="modalTitle" class="modal-title">Название папки</div>
+      <input id="modalInput" class="modal-input" placeholder="Например: Работа">
+      <div class="modal-actions">
+        <button id="modalCancel" class="btn">Отмена</button>
+        <button id="modalOk" class="btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./app.js"></script>
 </body>
 </html>
