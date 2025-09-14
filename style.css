@@ -1,34 +1,112 @@
-:root {
-  --bg:#f8fafc; --panel:#fff; --text:#0f172a; --muted:#64748b;
-  --border:#e2e8f0; --accent:#eef2ff; --primary:#2563eb;
+:root{
+  --sidebar-bg:#f5f5f7;        /* светло-серый как у Apple */
+  --sidebar-border:#e5e5ea;
+  --list-bg:#ffffff;
+  --list-border:#efeff4;
+  --text:#1c1c1e;
+  --muted:#6c6c70;
+  --accent:#ffd60a;            /* акцент заметок iOS */
+  --primary:#007aff;           /* синий iOS */
+  --danger:#ff3b30;
+  --select:#f2f2f7;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial}
-.app{display:grid;grid-template-columns:320px 1fr;height:100%}
-.sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:260px}
-.top{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
-.top input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px}
-.top button{padding:8px 10px;border:1px solid var(--border);background:#fff;border-radius:8px}
-.note-list{padding:10px;overflow:auto}
-.item{border:1px solid var(--border);background:#fff;border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer}
-.item.active{border-color:var(--primary);background:var(--accent)}
-.item .title{font-weight:600;margin-bottom:4px}
-.item .snippet{color:var(--muted);font-size:12px}
-.tagsbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px}
-.tag{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff;cursor:pointer}
-.content{display:grid;grid-template-rows:auto auto 1fr auto;min-width:0}
-.toolbar{display:flex;gap:6px;padding:10px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:1}
-.toolbar .title{flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px}
-.toolbar button{padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer}
-.toolbar .danger{color:#b91c1c}
-.meta{color:var(--muted);font-size:12px;padding:8px 12px}
-.editor{background:#fff;border:1px solid var(--border);border-radius:12px;margin:12px;margin-top:0;padding:18px;min-height:50vh;outline:none}
-.editor:focus{outline:2px solid #c7d2fe}
-.backlinks{padding:0 12px 12px 12px}
-.backlinks .label{font-weight:600;margin:8px 0}
-mark{background:#fde68a}
-.spacer{flex:1}
-@media (max-width:900px){
-  .app{grid-template-columns:1fr}
+body{
+  margin:0; color:var(--text);
+  font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  background:#fff;
+}
+
+/* layout: три панели как в Apple Notes на iPad */
+.app{display:grid; grid-template-columns: 280px 340px 1fr; height:100vh}
+
+/* SIDEBAR (папки) */
+.sidebar{
+  background:var(--sidebar-bg);
+  border-right:1px solid var(--sidebar-border);
+  display:flex; flex-direction:column;
+}
+.sidebar-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 12px; border-bottom:1px solid var(--sidebar-border);
+}
+.brand{font-weight:700; letter-spacing:.2px}
+.sidebar-header button{
+  border:0; background:#fff; padding:6px 10px; border-radius:10px;
+  box-shadow:0 1px 0 rgba(0,0,0,.05);
+}
+.search-wrap{padding:10px}
+.search-wrap input{
+  width:100%; padding:10px 12px; border:1px solid var(--sidebar-border); border-radius:12px; background:#fff;
+}
+.folders{padding:8px 4px 8px 8px; overflow:auto}
+.folder{
+  display:flex; align-items:center; gap:8px; padding:6px 10px; margin:2px 6px; border-radius:10px; cursor:pointer;
+}
+.folder:hover{background:#fff}
+.folder.active{background:#fff; outline:2px solid var(--accent)}
+.folder .name{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.folder .count{color:var(--muted); font-variant-numeric: tabular-nums}
+
+/* DIVIDER */
+.divider{height:1px; background:var(--sidebar-border); margin:4px 0}
+
+/* LIST PANE (средняя колонка) */
+.list-pane{
+  background:var(--list-bg);
+  border-right:1px solid var(--list-border);
+  display:flex; flex-direction:column;
+}
+.list-header{
+  padding:10px; border-bottom:1px solid var(--list-border);
+  display:flex; align-items:center; gap:8px;
+}
+.primary{
+  border:0; background:var(--primary); color:#fff; padding:8px 12px; border-radius:12px;
+}
+.note-list{overflow:auto; padding:6px}
+.item{
+  border-bottom:1px solid var(--list-border); padding:12px 10px; cursor:pointer;
+}
+.item:last-child{border-bottom:0}
+.item.active{background:var(--select)}
+.item .title{font-weight:600; margin-bottom:4px}
+.item .snippet{color:var(--muted); font-size:13px}
+.item .meta-row{display:flex; gap:8px; color:var(--muted); font-size:12px}
+
+/* CONTENT (правая панель) */
+.content{display:grid; grid-template-rows: auto auto 1fr auto; min-width:0}
+.toolbar{
+  display:flex; gap:6px; padding:8px 10px; border-bottom:1px solid var(--list-border);
+  position:sticky; top:0; background:#fff; z-index:1;
+}
+.toolbar button{border:1px solid var(--list-border); background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer}
+.toolbar .danger{color:var(--danger); border-color:#ffd7d5; background:#fff5f5}
+.toolbar select{
+  padding:6px 10px; border:1px solid var(--list-border); border-radius:10px; background:#fff;
+}
+.meta{color:var(--muted); font-size:12px; padding:8px 12px}
+.editor{
+  margin:12px; margin-top:0;
+  padding:18px; min-height:55vh;
+  border:1px solid var(--list-border); border-radius:14px; outline:none;
+  direction:ltr; unicode-bidi:plaintext;  /* фикс RTL на iOS */
+  line-height:1.55;
+}
+.editor:focus{box-shadow:0 0 0 3px #e5f0ff}
+.editor h1,.editor h2,.editor h3{margin:.8em 0 .4em}
+.editor ul,.editor ol{padding-left:1.5em}
+.backlinks{padding:0 12px 12px}
+.backlinks .label{font-weight:600; margin:8px 0}
+mark{background:#fff2b2}
+
+/* адаптив */
+@media (max-width:1100px){
+  .app{grid-template-columns: 260px 1fr}
+  .list-pane{display:none}
+}
+@media (max-width:700px){
+  .app{grid-template-columns: 1fr}
+  .sidebar{display:none}
 }
