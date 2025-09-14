@@ -1,11 +1,6 @@
-// Apple-Notes style: заголовок = 1-я строка, LTR фикс, папки/подпапки, близкий визуал.
-// Supabase (если есть config.json), иначе IndexedDB. Папки хранятся локально; если есть таблица folders в облаке — тоже используем.
-//
-// Таблицы в Supabase (опционально):
-// notes:   id uuid pk, user_id text/uuid, title text, content text, tags text[], folder_id text, created_at ts, updated_at ts
-// folders: id text pk, user_id text/uuid, name text, parent_id text null
-//
-// Примечание: title вычисляется из первой строки редактора на каждом вводе.
+// Apple Notes-style: модалка для имени папки, заголовок = 1-я строка,
+// LTR фикс, папки/подпапки, перенос заметок между папками,
+// сортировка + ручной порядок (вверх/вниз для папок и заметок).
 
 let supabase=null, useCloud=false;
 let userId='public-user';
@@ -23,299 +18,350 @@ async function loadConfig(){
 }
 await loadConfig();
 
-/* ---------- IndexedDB ---------- */
+/* ========== IndexedDB ========== */
 let idb;
 function idbInit(){
   return new Promise((resolve,reject)=>{
-    const req = indexedDB.open('notes-lite', 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if(!db.objectStoreNames.contains('notes')) db.createObjectStore('notes',{keyPath:'id'});
+    const req=indexedDB.open('notes-lite',3);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains('notes'))   db.createObjectStore('notes',{keyPath:'id'});
       if(!db.objectStoreNames.contains('folders')) db.createObjectStore('folders',{keyPath:'id'});
     };
-    req.onsuccess = ()=>{ idb=req.result; resolve(); };
-    req.onerror = ()=>reject(req.error);
+    req.onsuccess=()=>{idb=req.result;resolve();};
+    req.onerror =()=>reject(req.error);
   });
 }
 await idbInit();
+const idbAll = store => new Promise(res=>{ const tx=idb.transaction(store,'readonly'); const st=tx.objectStore(store); const q=st.getAll(); q.onsuccess=()=>res(q.result); });
+const idbPut = (store,obj)=> new Promise(res=>{ const tx=idb.transaction(store,'readwrite'); tx.objectStore(store).put(obj).onsuccess=()=>res(); });
+const idbDel = (store,id)=> new Promise(res=>{ const tx=idb.transaction(store,'readwrite'); tx.objectStore(store).delete(id).onsuccess=()=>res(); });
 
-const idbGetAll = (store)=>new Promise(res=>{
-  const tx=idb.transaction(store,'readonly'); const st=tx.objectStore(store);
-  const req=st.getAll(); req.onsuccess=()=>res(req.result);
-});
-const idbPut = (store,obj)=>new Promise(res=>{
-  const tx=idb.transaction(store,'readwrite'); tx.objectStore(store).put(obj).onsuccess=()=>res();
-});
-const idbDelete = (store,id)=>new Promise(res=>{
-  const tx=idb.transaction(store,'readwrite'); tx.objectStore(store).delete(id).onsuccess=()=>res();
-});
+/* ========== Supabase helpers (опционально) ========== */
+async function cloudListNotes(){ const {data,error}=await supabase.from('notes').select('*').eq('user_id',userId); if(error) throw error; return data; }
+async function cloudUpsertNote(n){ const {error}=await supabase.from('notes').upsert(n); if(error) throw error; }
+async function cloudDeleteNote(id){ const {error}=await supabase.from('notes').delete().eq('id',id).eq('user_id',userId); if(error) throw error; }
+async function cloudListFolders(){ const {data,error}=await supabase.from('folders').select('*').eq('user_id',userId); if(error) throw error; return data; }
+async function cloudUpsertFolder(f){ const {error}=await supabase.from('folders').upsert(f); if(error) throw error; }
 
-/* ---------- Cloud helpers ---------- */
-async function cloudListNotes(){
-  const { data, error } = await supabase.from('notes').select('*').eq('user_id',userId).order('updated_at',{ascending:false});
-  if(error) throw error; return data;
-}
-async function cloudUpsertNote(n){
-  const { error } = await supabase.from('notes').upsert(n);
-  if(error) throw error;
-}
-async function cloudDeleteNote(id){
-  const { error } = await supabase.from('notes').delete().eq('id',id).eq('user_id',userId);
-  if(error) throw error;
-}
+/* ========== DOM refs ========== */
+const $=s=>document.querySelector(s);
+const foldersTreeEl=$('#foldersTree');
+const listEl=$('#list');
+const editorEl=$('#editor');
+const moveFolderEl=$('#moveFolder');
+const metaEl=$('#meta');
+const searchEl=$('#search');
+const noteUpBtn=$('#noteUp');
+const noteDownBtn=$('#noteDown');
+const newNoteBtn=$('#newNote');
+const newFolderBtn=$('#newFolder');
 
-async function cloudListFolders(){
-  const { data, error } = await supabase.from('folders').select('*').eq('user_id',userId);
-  if(error) throw error; return data;
-}
-async function cloudUpsertFolder(f){
-  const { error } = await supabase.from('folders').upsert(f);
-  if(error) throw error;
-}
+/* modal */
+const modal=$('#modal'), modalInput=$('#modalInput'), modalOk=$('#modalOk'), modalCancel=$('#modalCancel');
 
-/* ---------- DOM ---------- */
-const $ = s=>document.querySelector(s);
-const listEl = $('#list');
-const foldersTreeEl = $('#foldersTree');
-const moveFolderSel = $('#moveFolder');
-const titleFrom = (html) => {
-  const div=document.createElement('div'); div.innerHTML = html || '';
-  const text = (div.textContent||'').replace(/\r/g,'').split('\n').map(s=>s.trim()).find(s=>s.length>0) || '';
-  return text.slice(0,160);
+/* ========== utils ========== */
+const uid=()=> (crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
+const nowIso=()=>new Date().toISOString();
+const strip=html=>{const d=document.createElement('div'); d.innerHTML=html||''; return d.textContent||'';};
+const titleFrom=html=>{
+  const d=document.createElement('div'); d.innerHTML=html||'';
+  const first=(d.textContent||'').replace(/\r/g,'').split('\n').map(s=>s.trim()).find(Boolean) || '';
+  return first.slice(0,160);
 };
-const strip = (html)=>{ const d=document.createElement('div'); d.innerHTML=html||''; return d.textContent||''; };
-const nowIso = ()=>new Date().toISOString();
-const uid = ()=> (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-function extractTags(text){
-  const set=new Set(); const re=/(^|\s)#([\p{L}\p{N}_-]+)/gu; let m;
-  while((m=re.exec(text))) set.add(m[2].toLowerCase());
-  return Array.from(set);
-}
-function highlight(text,q){
-  if(!q) return text; const esc=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  return text.replace(new RegExp('('+esc+')','gi'),'<mark>$1</mark>');
-}
+function extractTags(text){ const s=new Set(); const re=/(^|\s)#([\p{L}\p{N}_-]+)/gu; let m; while((m=re.exec(text))) s.add(m[2].toLowerCase()); return Array.from(s); }
+function highlight(text,q){ if(!q)return text; const esc=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); return text.replace(new RegExp('('+esc+')','gi'),'<mark>$1</mark>'); }
 
-/* ---------- State ---------- */
-let state = {
-  folders: [],
-  notes: [],
-  activeId: null,
-  activeFolderId: 'root',
-  query: ''
+/* ========== state ========== */
+let state={
+  folders:[],   // {id,name,parent_id,order_index,user_id}
+  notes:[],     // {id,folder_id,title,content,tags,order_index,created_at,updated_at,user_id}
+  activeFolderId:'root',
+  activeId:null,
+  query:''
 };
 
-/* ---------- Folders local defaults ---------- */
 function ensureDefaultFolders(){
-  if(!state.folders.length){
-    state.folders = [
-      { id:'root', user_id:userId, name:'Мои заметки', parent_id:null }
-    ];
+  if(!state.folders.find(f=>f.id==='root')){
+    state.folders.push({ id:'root', name:'Мои заметки', parent_id:null, order_index:0, user_id });
   }
 }
 
-/* ---------- Load / Save ---------- */
+/* ========== load/save ========== */
 async function loadAll(){
-  // folders
-  let folders = useCloud ? await (async()=>{ try{ return await cloudListFolders(); }catch{ return await idbGetAll('folders'); } })()
-                          : await idbGetAll('folders');
-  state.folders = folders || [];
+  state.folders = useCloud ? await (async()=>{ try{return await cloudListFolders();}catch{return await idbAll('folders');} })() : await idbAll('folders');
   ensureDefaultFolders();
-  // notes
-  state.notes = useCloud ? await cloudListNotes() : await idbGetAll('notes');
-  state.notes.sort((a,b)=> new Date(b.updated_at) - new Date(a.updated_at));
-  if(!state.activeFolderId) state.activeFolderId = 'root';
-  if(!state.activeId && state.notes[0]) state.activeId = state.notes[0].id;
+
+  state.notes = useCloud ? await cloudListNotes() : await idbAll('notes');
+
+  // проставим order_index, если нет (по дате)
+  state.folders.forEach((f,i)=>{ if(typeof f.order_index!=='number') f.order_index=i; });
+  state.notes.forEach((n,i)=>{ if(typeof n.order_index!=='number') n.order_index=-i; });
+
+  sortFolders(); sortNotes();
+
+  if(!state.activeId && state.notes.length) state.activeId = state.notes[0].id;
+
   renderFolders(); renderMoveSelect(); renderList(); renderActive();
 }
 
-async function saveNotePartial(p){
-  const n = state.notes.find(x=>x.id===state.activeId);
-  if(!n) return;
-  // вычисляем заголовок из первой строки каждый раз
-  const html = p.content!==undefined ? p.content : n.content;
-  const computedTitle = titleFrom(html);
-  const title = computedTitle || 'Новая заметка';
+function sortFolders(){
+  state.folders.sort((a,b)=>{
+    if((a.parent_id||'')!== (b.parent_id||'')) return (a.parent_id||'').localeCompare(b.parent_id||'');
+    return (a.order_index||0) - (b.order_index||0) || a.name.localeCompare(b.name,'ru');
+  });
+}
+function sortNotes(){
+  // сортируем в пределах папки по order_index (меньше выше)
+  state.notes.sort((a,b)=>{
+    const fa=(a.folder_id||'root'), fb=(b.folder_id||'root');
+    if(fa!==fb) return fa.localeCompare(fb);
+    return (a.order_index||0)-(b.order_index||0) || new Date(b.updated_at)-new Date(a.updated_at);
+  });
+}
 
-  const textForTags = (title + ' ' + strip(html||''));
+async function persistFolder(f){
+  if(useCloud){ try{ await cloudUpsertFolder(f);}catch{ await idbPut('folders',f);} }
+  else await idbPut('folders',f);
+}
+async function persistNote(n){
+  if(useCloud) await cloudUpsertNote(n); else await idbPut('notes',n);
+}
+
+async function saveNotePartial(p){
+  const n=state.notes.find(x=>x.id===state.activeId); if(!n) return;
+  const content = p.content!==undefined ? p.content : n.content;
+  const computedTitle = titleFrom(content) || 'Новая заметка';
   const updated = {
-    ...n,
-    ...p,
-    title,
-    tags: extractTags(textForTags),
+    ...n, ...p,
+    title: computedTitle,
+    tags: extractTags((computedTitle+' '+strip(content||''))),
     updated_at: nowIso()
   };
-  if(useCloud) await cloudUpsertNote(updated); else await idbPut('notes', updated);
-  await loadAll();
+  await persistNote(updated);
+  // обновим state без перезагрузки
+  Object.assign(n, updated);
+  sortNotes();
+  renderList(); renderActive();
 }
 
 async function createNote(){
   const folderId = state.activeFolderId || 'root';
-  const n = {
-    id: uid(),
-    user_id: userId,
-    title: 'Новая заметка',
-    content: '',
-    tags: [],
-    folder_id: folderId,
-    created_at: nowIso(),
-    updated_at: nowIso()
+  // order_index: выше всех — возьмём минимальный в папке и -1
+  const inFolder = state.notes.filter(n=>(n.folder_id||'root')===folderId);
+  const minOrder = inFolder.length? Math.min(...inFolder.map(n=>n.order_index||0)) : 0;
+  const n={
+    id:uid(), user_id, folder_id:folderId,
+    title:'Новая заметка', content:'', tags:[],
+    order_index: minOrder-1,
+    created_at: nowIso(), updated_at: nowIso()
   };
-  if(useCloud) await cloudUpsertNote(n); else await idbPut('notes', n);
+  await persistNote(n);
+  state.notes.push(n);
   state.activeId = n.id;
-  await loadAll();
+  sortNotes();
+  renderList(); renderActive();
+  editorEl.focus();
 }
 
 async function deleteNote(){
-  const id = state.activeId; if(!id) return;
+  const id=state.activeId; if(!id) return;
   if(!confirm('Удалить заметку?')) return;
-  if(useCloud) await cloudDeleteNote(id); else await idbDelete('notes', id);
+  if(useCloud) await cloudDeleteNote(id); else await idbDel('notes',id);
+  state.notes = state.notes.filter(n=>n.id!==id);
   state.activeId = state.notes[0]?.id || null;
-  await loadAll();
+  renderList(); renderActive();
 }
 
-async function createFolder(){
-  const name = prompt('Название папки'); if(!name) return;
-  const f = { id: uid(), user_id: userId, name: name.trim(), parent_id: state.activeFolderId==='root'? null : state.activeFolderId };
-  if(useCloud){ try{ await cloudUpsertFolder(f); } catch{ await idbPut('folders', f); } }
-  else { await idbPut('folders', f); }
-  await loadAll();
+async function createFolderModal(){
+  // красивое модальное вместо prompt
+  openModal(async (name)=>{
+    if(!name) return;
+    const parent = state.activeFolderId==='root' ? null : state.activeFolderId;
+    // order_index в пределах одного parent_id
+    const siblings = state.folders.filter(f=>(f.parent_id||null)===parent);
+    const maxOrder = siblings.length? Math.max(...siblings.map(f=>f.order_index||0)) : 0;
+    const f={ id:uid(), user_id, name:name.trim(), parent_id:parent, order_index:maxOrder+1 };
+    await persistFolder(f);
+    state.folders.push(f);
+    sortFolders(); renderFolders(); renderMoveSelect();
+  });
 }
 
+/* перемещение заметок и папок вверх/вниз */
+function bumpOrder(arr, idxA, idxB){
+  if(idxA<0||idxB<0||idxA>=arr.length||idxB>=arr.length) return;
+  const a=arr[idxA], b=arr[idxB];
+  const tmp=a.order_index; a.order_index=b.order_index; b.order_index=tmp;
+}
+async function moveActiveNote(delta){
+  const fid = state.activeFolderId || 'root';
+  const list = state.notes.filter(n=>(n.folder_id||'root')===fid);
+  const idx = list.findIndex(n=>n.id===state.activeId);
+  if(idx<0) return;
+  const other = idx+delta;
+  if(other<0 || other>=list.length) return;
+  bumpOrder(list, idx, other);
+  await Promise.all(list.map(persistNote));
+  sortNotes(); renderList();
+}
+async function moveFolderUpDown(folderId, delta){
+  const folder = state.folders.find(f=>f.id===folderId); if(!folder) return;
+  const parent = folder.parent_id||null;
+  const group = state.folders.filter(f=>(f.parent_id||null)===parent);
+  const idx = group.findIndex(f=>f.id===folderId);
+  const other = idx+delta; if(other<0||other>=group.length) return;
+  bumpOrder(group, idx, other);
+  await Promise.all(group.map(persistFolder));
+  sortFolders(); renderFolders(); renderMoveSelect();
+}
+
+/* перенос заметки между папками — через select */
 async function moveActiveToFolder(folderId){
-  const n = state.notes.find(x=>x.id===state.activeId); if(!n) return;
-  if(n.folder_id === folderId) return;
-  await saveNotePartial({ folder_id: folderId });
+  const n=state.notes.find(x=>x.id===state.activeId); if(!n) return;
+  if((n.folder_id||'root')===folderId) return;
+  // поставить сверху новой папки
+  const inFolder = state.notes.filter(x=>(x.folder_id||'root')===folderId);
+  const minOrder = inFolder.length? Math.min(...inFolder.map(x=>x.order_index||0)) : 0;
+  n.folder_id = folderId;
+  n.order_index = minOrder-1;
+  await persistNote(n);
+  sortNotes();
+  renderList(); renderActive();
 }
 
-/* ---------- UI Bindings ---------- */
-$('#newNote').addEventListener('click', createNote);
+/* ========== UI bindings ========== */
+newNoteBtn.addEventListener('click', createNote);
+newFolderBtn.addEventListener('click', createFolderModal);
+noteUpBtn.addEventListener('click', ()=>moveActiveNote(-1));
+noteDownBtn.addEventListener('click', ()=>moveActiveNote(1));
 $('#del').addEventListener('click', deleteNote);
-$('#newFolder').addEventListener('click', createFolder);
-$('#search').addEventListener('input', e=>{ state.query = e.target.value.trim().toLowerCase(); renderList(); });
+searchEl.addEventListener('input', e=>{ state.query=e.target.value.trim().toLowerCase(); renderList(); });
 
 document.querySelectorAll('[data-cmd]').forEach(btn=>{
-  btn.addEventListener('click', ()=> document.execCommand(btn.dataset.cmd, false, null));
+  btn.addEventListener('click', ()=> document.execCommand(btn.dataset.cmd,false,null));
 });
 
-const editorEl = $('#editor');
-const metaEl = $('#meta');
-const listPaneEl = $('#list');
-const backlinksEl = $('#backlinks');
-const moveFolderEl = $('#moveFolder');
-
-// ввод в редактор: правим title из 1-й строки, чиним LTR
+/* редактор: LTR фикс и мгновенное обновление списка */
 editorEl.addEventListener('input', ()=>{
-  editorEl.setAttribute('dir','ltr');
-  editorEl.style.direction='ltr';
-  const content = editorEl.innerHTML;
+  editorEl.setAttribute('dir','ltr'); editorEl.style.direction='ltr';
+  const content=editorEl.innerHTML;
   saveNotePartial({ content });
 });
 
-/* ---------- Render ---------- */
+/* селектор переноса заметки между папками */
+moveFolderEl.addEventListener('change', ()=> moveActiveToFolder(moveFolderEl.value));
+
+/* ========== render ========== */
 function renderFolders(){
-  // строим дерево
   const byParent = new Map();
   state.folders.forEach(f=>{
-    const key = f.parent_id || 'root';
-    if(!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key).push(f);
+    const k=f.parent_id||'root';
+    if(!byParent.has(k)) byParent.set(k,[]);
+    byParent.get(k).push(f);
   });
-  const makeNode = (parentId, level=0)=>{
-    const arr = byParent.get(parentId) || [];
-    arr.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  const make = (parentId, level=0)=>{
+    const arr=(byParent.get(parentId)||[]).sort((a,b)=> (a.order_index||0)-(b.order_index||0) || a.name.localeCompare(b.name,'ru'));
     return arr.map(f=>{
-      const count = state.notes.filter(n => (n.folder_id||'root') === f.id).length;
+      const count = state.notes.filter(n=>(n.folder_id||'root')===f.id).length;
       return `
         <div class="folder ${state.activeFolderId===f.id?'active':''}" data-id="${f.id}" style="padding-left:${6+level*14}px">
           <span>📁</span>
-          <span class="name">${f.name}</span>
+          <span class="name">${f.id==='root'?'Мои заметки':f.name}</span>
           <span class="count">${count}</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            ${f.id!=='root'? `<button class="btn-ghost fup" title="Вверх">▲</button>
+                               <button class="btn-ghost fdown" title="Вниз">▼</button>`:''}
+          </span>
         </div>
-        ${makeNode(f.id, level+1)}
+        ${make(f.id, level+1)}
       `;
     }).join('');
   };
-  foldersTreeEl.innerHTML = `
-    <div class="folder ${state.activeFolderId==='root'?'active':''}" data-id="root" style="padding-left:6px">
-      <span>📁</span><span class="name">Мои заметки</span>
-      <span class="count">${state.notes.filter(n=>(n.folder_id||'root')==='root').length}</span>
-    </div>
-    ${makeNode('root', 0)}
-  `;
+  foldersTreeEl.innerHTML = make('root', 0);
+
   foldersTreeEl.querySelectorAll('.folder').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.activeFolderId = el.getAttribute('data-id');
-      renderFolders(); renderList();
+    const id=el.getAttribute('data-id');
+    // click — выбрать папку
+    el.addEventListener('click', (ev)=>{
+      // не переключать при клике по кнопкам стрелок
+      if(ev.target.closest('.fup,.fdown')) return;
+      state.activeFolderId=id; renderFolders(); renderList();
     });
+    // стрелки
+    const up=el.querySelector('.fup'), down=el.querySelector('.fdown');
+    if(up) up.addEventListener('click',(e)=>{ e.stopPropagation(); moveFolderUpDown(id,-1); });
+    if(down) down.addEventListener('click',(e)=>{ e.stopPropagation(); moveFolderUpDown(id,1); });
   });
 }
 
 function renderMoveSelect(){
-  moveFolderEl.innerHTML = '';
-  // плоский список с отступом по уровню
-  const levelOf = (id, lvl=0)=>{
-    const folder = state.folders.find(f=>f.id===id);
-    if(!folder || !folder.parent_id) return lvl;
-    return 1 + levelOf(folder.parent_id, lvl);
-  };
-  // плюс корень
-  const all = [{id:'root', name:'Мои заметки', parent_id:null}, ...state.folders];
+  moveFolderEl.innerHTML='';
+  const all=[{id:'root',name:'Мои заметки',parent_id:null}, ...state.folders.filter(f=>f.id!=='root')];
+  const levelOf=(id,l=0)=>{ const f=state.folders.find(x=>x.id===id); if(!f||!f.parent_id) return l; return levelOf(f.parent_id,l+1); };
   all.forEach(f=>{
-    const opt = document.createElement('option');
-    const level = f.id==='root'?0:levelOf(f.id);
-    opt.value = f.id;
-    opt.textContent = ' '.repeat(level*2) + (f.id==='root'?'Мои заметки':f.name);
+    const opt=document.createElement('option');
+    const lvl = f.id==='root'?0:levelOf(f.id);
+    opt.value=f.id; opt.textContent = ' '.repeat(lvl*2) + (f.id==='root'?'Мои заметки':f.name);
     moveFolderEl.appendChild(opt);
   });
-  moveFolderEl.value = state.activeFolderId || 'root';
-  moveFolderEl.onchange = ()=> moveActiveToFolder(moveFolderEl.value);
 }
 
 function listFiltered(){
-  const q = state.query, fid = state.activeFolderId || 'root';
+  const q=state.query, fid=state.activeFolderId||'root';
   return state.notes.filter(n=>{
-    const inFolder = (n.folder_id||'root') === fid;
-    if(!inFolder) return false;
+    const okFolder=(n.folder_id||'root')===fid;
+    if(!okFolder) return false;
     if(!q) return true;
-    const text = (n.title + ' ' + strip(n.content)).toLowerCase();
+    const text=(n.title+' '+strip(n.content)).toLowerCase();
     return text.includes(q) || (n.tags||[]).some(t=>t.includes(q));
   });
 }
 
 function renderList(){
-  const arr = listFiltered();
+  const arr=listFiltered();
   listEl.innerHTML='';
   arr.forEach(n=>{
     const div=document.createElement('div');
     div.className='item' + (n.id===state.activeId?' active':'');
-    const snippet = strip(n.content).slice(0,120);
-    div.innerHTML = `
-      <div class="title">${n.title || 'Новая заметка'}</div>
-      <div class="snippet">${snippet}</div>
-      <div class="meta-row"><span>${new Date(n.updated_at).toLocaleString()}</span></div>
+    const snippet=strip(n.content).slice(0,120);
+    const q=state.query;
+    div.innerHTML=`
+      <div class="title">${highlight(n.title||'Новая заметка', q)}</div>
+      <div class="snippet">${highlight(snippet, q)}</div>
+      <div class="meta-row">
+        <span>${new Date(n.updated_at).toLocaleString()}</span>
+      </div>
     `;
-    div.addEventListener('click', ()=>{ state.activeId=n.id; renderActive(); renderList(); editorEl.focus(); });
+    div.addEventListener('click',()=>{ state.activeId=n.id; renderActive(); renderList(); editorEl.focus(); });
     listEl.appendChild(div);
   });
 }
 
 function renderActive(){
-  const n = state.notes.find(x=>x.id===state.activeId);
-  if(!n){ editorEl.innerHTML=''; metaEl.textContent=''; backlinksEl.innerHTML=''; return; }
-  editorEl.setAttribute('dir','ltr'); editorEl.style.direction='ltr'; // ещё раз фикс для iOS
+  const n=state.notes.find(x=>x.id===state.activeId);
+  if(!n){ editorEl.innerHTML=''; metaEl.textContent=''; return; }
+  editorEl.setAttribute('dir','ltr'); editorEl.style.direction='ltr';
   editorEl.innerHTML = n.content || '';
   metaEl.textContent = `Создано: ${new Date(n.created_at).toLocaleString()} · Обновлено: ${new Date(n.updated_at).toLocaleString()}`;
-
   moveFolderEl.value = n.folder_id || 'root';
-
-  // простые backlinks по [[title]]
-  const linksTo = state.notes.filter(x => x.id!==n.id && (x.content||'').includes('[['+(n.title||'')+']]'));
-  backlinksEl.innerHTML = linksTo.length? linksTo.map(b=>`
-    <div class="item"><div class="title">${b.title||'Без названия'}</div>
-    <div class="snippet">${strip(b.content).slice(0,120)}</div></div>
-  `).join('') : '<div class="meta">Пока нет</div>';
 }
 
-/* ---------- Go ---------- */
+/* ======= modal helpers ======= */
+function openModal(onOk){
+  modal.classList.remove('hidden');
+  modalInput.value=''; modalInput.focus();
+  const ok=async ()=>{
+    const v=modalInput.value.trim();
+    closeModal();
+    await onOk(v);
+  };
+  const cancel=()=> closeModal();
+  modalOk.onclick=ok; modalCancel.onclick=cancel;
+  modal.addEventListener('click', e=>{ if(e.target===modal) closeModal(); }, {once:true});
+  modalInput.onkeydown=(e)=>{ if(e.key==='Enter') ok(); if(e.key==='Escape') cancel(); };
+}
+function closeModal(){ modal.classList.add('hidden'); modalOk.onclick=null; modalCancel.onclick=null; modalInput.onkeydown=null; }
+
+/* ========== go ========== */
 await loadAll();
