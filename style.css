@@ -1,0 +1,34 @@
+:root {
+  --bg:#f8fafc; --panel:#fff; --text:#0f172a; --muted:#64748b;
+  --border:#e2e8f0; --accent:#eef2ff; --primary:#2563eb;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+.app{display:grid;grid-template-columns:320px 1fr;height:100%}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:260px}
+.top{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
+.top input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px}
+.top button{padding:8px 10px;border:1px solid var(--border);background:#fff;border-radius:8px}
+.note-list{padding:10px;overflow:auto}
+.item{border:1px solid var(--border);background:#fff;border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer}
+.item.active{border-color:var(--primary);background:var(--accent)}
+.item .title{font-weight:600;margin-bottom:4px}
+.item .snippet{color:var(--muted);font-size:12px}
+.tagsbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px}
+.tag{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #e0e7ff;cursor:pointer}
+.content{display:grid;grid-template-rows:auto auto 1fr auto;min-width:0}
+.toolbar{display:flex;gap:6px;padding:10px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:1}
+.toolbar .title{flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px}
+.toolbar button{padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer}
+.toolbar .danger{color:#b91c1c}
+.meta{color:var(--muted);font-size:12px;padding:8px 12px}
+.editor{background:#fff;border:1px solid var(--border);border-radius:12px;margin:12px;margin-top:0;padding:18px;min-height:50vh;outline:none}
+.editor:focus{outline:2px solid #c7d2fe}
+.backlinks{padding:0 12px 12px 12px}
+.backlinks .label{font-weight:600;margin:8px 0}
+mark{background:#fde68a}
+.spacer{flex:1}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+}
