@@ -1,15 +1,41 @@
-
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="manifest" href="/manifest.webmanifest">
-    <meta name="theme-color" content="#ffffff">
-    <title>Notes Lite</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes Lite — Web</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="top">
+        <button id="newNote">＋ Новая</button>
+        <input id="search" placeholder="Поиск..." />
+      </div>
+      <div id="tags" class="tagsbar"></div>
+      <div id="list" class="note-list"></div>
+    </aside>
+    <main class="content">
+      <div class="toolbar">
+        <input id="title" class="title" placeholder="Заголовок">
+        <div class="spacer"></div>
+        <button data-cmd="bold"><b>B</b></button>
+        <button data-cmd="italic"><i>I</i></button>
+        <button data-cmd="underline"><u>U</u></button>
+        <button data-cmd="strikeThrough"><s>S</s></button>
+        <button data-cmd="insertUnorderedList">• Список</button>
+        <button data-cmd="insertOrderedList">1. Список</button>
+        <button id="del" class="danger">Удалить</button>
+      </div>
+      <div id="meta" class="meta"></div>
+      <div id="editor" class="editor" contenteditable></div>
+      <div class="backlinks">
+        <div class="label">Ссылки на эту заметку</div>
+        <div id="backlinks"></div>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
 </html>
