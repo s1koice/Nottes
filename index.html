@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,28 +8,42 @@
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
-      <div class="top">
-        <button id="newNote">＋ Новая</button>
-        <input id="search" placeholder="Поиск..." />
+    <aside class="sidebar" aria-label="Папки">
+      <div class="sidebar-header">
+        <div class="brand">Заметки</div>
+        <button id="newFolder" title="Новая папка">＋ Папка</button>
       </div>
-      <div id="tags" class="tagsbar"></div>
-      <div id="list" class="note-list"></div>
+      <nav id="foldersTree" class="folders"></nav>
+      <div class="divider"></div>
+      <div class="search-wrap">
+        <input id="search" placeholder="Поиск" inputmode="search" />
+      </div>
     </aside>
-    <main class="content">
+
+    <section class="list-pane" aria-label="Список заметок">
+      <div class="list-header">
+        <button id="newNote" class="primary">Новая заметка</button>
+      </div>
+      <div id="list" class="note-list" role="list"></div>
+    </section>
+
+    <main class="content" aria-label="Заметка">
       <div class="toolbar">
-        <input id="title" class="title" placeholder="Заголовок">
+        <select id="moveFolder" title="Переместить в папку"></select>
         <div class="spacer"></div>
         <button data-cmd="bold"><b>B</b></button>
         <button data-cmd="italic"><i>I</i></button>
         <button data-cmd="underline"><u>U</u></button>
         <button data-cmd="strikeThrough"><s>S</s></button>
-        <button data-cmd="insertUnorderedList">• Список</button>
-        <button data-cmd="insertOrderedList">1. Список</button>
-        <button id="del" class="danger">Удалить</button>
+        <button data-cmd="insertUnorderedList">•</button>
+        <button data-cmd="insertOrderedList">1.</button>
+        <button id="del" class="danger" title="Удалить">Удалить</button>
       </div>
+
+      <!-- заголовок теперь вычисляется автоматически из первой строки редактора -->
       <div id="meta" class="meta"></div>
-      <div id="editor" class="editor" contenteditable></div>
+      <div id="editor" class="editor" contenteditable spellcheck="true" dir="ltr" enterkeyhint="done"></div>
+
       <div class="backlinks">
         <div class="label">Ссылки на эту заметку</div>
         <div id="backlinks"></div>
